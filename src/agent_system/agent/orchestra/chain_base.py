@@ -12,6 +12,7 @@ from transformers import PreTrainedTokenizer
 from verl import DataProto
 from agent_system.agent.orchestra.base import BaseOrchestra
 from economy_engine.engine import AlternatingPhase, ChainTurnEngine
+from economy_engine.population import PopulationLedger
 
 
 def resolve_alt_counter(domain_env: str) -> str:
@@ -95,9 +96,18 @@ class ChainOrchestraBase(BaseOrchestra):
         self.reward_scale = float(_get("reward_scale", 1.0))
         if self.reward_scale <= 0:
             raise ValueError(f"{self.DOMAIN_BLOCK}.reward_scale must be > 0")
-        # ONE participation rent, charged only to the agent that WINS the turn (on its bid row
-        # and on its act row, both settled at profit - rent). MPT requires rent > 0.
-        self.reward_rent = float(_get("reward_rent", 0.05))
+        # The participation rent, charged only to the agent that WINS the turn (on its bid row
+        # and on its act row, both settled at profit - rent). MPT requires rent > 0. One number
+        # (MPT: the same rent for everyone), or a list in agent_ids order (EoM-style: each agent
+        # pays its own cost per turn, e.g. a frontier model or a human costs more).
+        _rent = _get("reward_rent", 0.05)
+        if isinstance(_rent, (int, float)):
+            self.reward_rent = float(_rent)
+        else:
+            self.reward_rent = [float(x) for x in _rent]
+            if len(self.reward_rent) != self.n:
+                raise ValueError(f"{self.DOMAIN_BLOCK}.reward_rent has {len(self.reward_rent)} "
+                                 f"entries for {self.n} agents")
         # Revenue-share settlement is hard-wired in MPT (see the module docstring).
         self.revenue_share = bool(_get("revenue_share", True))
         assert self.revenue_share, "MPT requires revenue_share=True"
@@ -128,7 +138,26 @@ class ChainOrchestraBase(BaseOrchestra):
         assert self.bid_pass, "MPT requires bid_pass=True"
         assert 0.0 in self.bid_levels, "bid_pass=True needs a 0.0 level to snap passes onto"
         self.seg_scale = bool(_get("seg_scale", self.SEG_SCALE_DEFAULT))
-        assert self.reward_rent > 0.0, "revenue_share expects a participation rent (e.g. 0.05)"
+        assert np.all(np.asarray(self.reward_rent) > 0.0), \
+            "revenue_share expects a participation rent (e.g. 0.05)"
+
+        # EoM's population economy (economy_engine.population.PopulationLedger): wealth carried
+        # across episodes, optional bankruptcy, and which agents may bid. Without an `economy`
+        # block every agent is always available, so the auction is MPT's.
+        econ = _get("economy", None)
+
+        def _eget(k, d):
+            return getattr(econ, k, d) if econ is not None else d
+
+        _unavail = [str(a) for a in (_eget("unavailable", None) or [])]
+        for a in _unavail:
+            if a not in self.desk_ids:
+                raise ValueError(f"{self.DOMAIN_BLOCK}.economy.unavailable names unknown agent {a!r}")
+        self.ledger = PopulationLedger(
+            self.n, wealth_init=float(_eget("wealth_init", 1.0)),
+            bankruptcy=bool(_eget("bankruptcy", False)),
+            threshold=float(_eget("bankruptcy_threshold", 0.0)),
+            unavailable=[self.desk_ids.index(a) for a in _unavail])
 
         # Fair random tie-breaking. Bids are highly discrete; a plain argmax hands every tie to
         # the lowest-index agent, which starves the others. Jitter is << the bid granularity.
@@ -423,7 +452,9 @@ class ChainOrchestraBase(BaseOrchestra):
                 orch.save_to_buffer(orch.desk_ids[i], orch._stamp(batch, mask, credit, rent, bs))
 
         res = self.engine.run_turn(active, t, bs, train_bid_rows=self.train_bid_rows,
-                                   train_act_rows=self.train_act_rows, cb=_CB)
+                                   train_act_rows=self.train_act_rows, cb=_CB,
+                                   available=(None if self.ledger.everyone_available
+                                              else self.ledger.available))
         self._publish_cf_candidates(res, active, t)
         self._after_turn(t, step, bs, active, res, bid_texts, acts, ctx)
         # published for the counterfactual collector's pre-action hook: branch A replays
@@ -456,8 +487,26 @@ class ChainOrchestraBase(BaseOrchestra):
                             "batch": orch._stamp(batch, mask, credit, rent, bs)})
 
         bundle = self.engine.finalize(episode_rewards, bs, is_train, _Sink)
+        if bundle is not None:
+            self._settle_ledger(bundle)
         self._after_finalize(bundle, bs, episode_rewards, is_train)
         return out
+
+    def _settle_ledger(self, bundle):
+        """Carry this batch's earnings into each agent's wealth (EoM's population economy) and
+        log it; with bankruptcy on, broke agents stop bidding from the next episode."""
+        before = self.ledger.available.copy()
+        earn = self.ledger.settle(self._chosen, bundle["profit"], self.engine.rents, self._term_at)
+        gone = [self.desk_ids[i] for i in np.nonzero(before & ~self.ledger.available)[0]]
+        wealth = {self.desk_ids[i]: round(float(self.ledger.wealth[i]), 4) for i in range(self.n)}
+        print(f"[{self.LOG_TAG}] ledger: wealth={wealth}"
+              + (f" BANKRUPT={gone}" if gone else ""), flush=True)
+        self._trace([{"kind": "ledger", "pid": self._pid, "episode": self._ep_seq,
+                      "train": self._is_train, "earnings": {self.desk_ids[i]: float(earn[i])
+                                                            for i in range(self.n)},
+                      "wealth": wealth, "available": [self.desk_ids[i] for i in range(self.n)
+                                                      if self.ledger.available[i]],
+                      "bankrupt_now": gone}])
 
     # ---- shared trace helper of the NaVILA / deep-research hooks ----------------------------
     def _episode_summary_trace(self, bs: int, episode_rewards):

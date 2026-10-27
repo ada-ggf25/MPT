@@ -146,15 +146,19 @@ class ChainTurnEngine:
             the caller resolves its handle by (turn, i, kind)
     """
 
-    def __init__(self, n: int, *, bid_levels, reward_rent: float, reward_scale: float,
+    def __init__(self, n: int, *, bid_levels, reward_rent, reward_scale: float,
                  seg_scale: bool, rng=None):
         self.n = int(n)
         self.bid_levels = tuple(bid_levels)
         # MPT hard-wires revenue-share settlement and bid_pass (level 0 = pass, cannot win);
         # the participation rent is what makes passing on a useless turn the better choice.
         assert 0.0 in self.bid_levels, "MPT uses bid_pass: bid_levels must contain 0.0 (= pass)"
-        assert float(reward_rent) > 0.0, "MPT requires a positive participation rent"
-        self.reward_rent = float(reward_rent)
+        # reward_rent: one rent shared by every agent (MPT), or one per agent (EoM-style rent at
+        # each agent's own cost, e.g. a frontier model or a human costs more per turn). Either way
+        # only the turn's winner pays it.
+        self.rents = np.broadcast_to(np.asarray(reward_rent, dtype=np.float64), (self.n,)).copy()
+        assert (self.rents > 0.0).all(), "MPT requires a positive participation rent"
+        self.reward_rent = reward_rent
         self.reward_scale = float(reward_scale)
         self.seg_scale = bool(seg_scale)
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -210,17 +214,26 @@ class ChainTurnEngine:
             yield i, futs[i].result()
 
     def run_turn(self, active: np.ndarray, t: int, bs: int, *, train_bid_rows: bool,
-                 train_act_rows: bool, cb) -> TurnResult:
+                 train_act_rows: bool, cb, available=None) -> TurnResult:
+        """`available` (EoM's open population; None = every agent, MPT's fixed population): bool
+        of shape (n,) or (n, bs). An unavailable agent is not asked to bid, so it cannot win and
+        emits no row -- an agent that left, was removed, or went bankrupt."""
         from economy_engine.auction import snap_bids_to_levels, apply_bid_pass, clear_auction
         if self.term_at is None:
             self.term_at = np.full(bs, -1, dtype=np.int64)
 
-        # ---- 1) collect bids from every agent on every active sample (raw quote vs effective
-        #         price are separate tracks) ----
+        # ---- 1) collect bids from every available agent on every active sample (raw quote vs
+        #         effective price are separate tracks) ----
         raw_bids = [np.zeros(bs, dtype=np.float64) for _ in range(self.n)]
         bid_vals = np.full((self.n, bs), -np.inf, dtype=np.float64)
         bidders_t = [np.zeros(bs, dtype=bool) for _ in range(self.n)]
-        _bid_masks = {i: active for i in range(self.n)} if active.any() else {}
+        if available is None:
+            _bid_masks = {i: active for i in range(self.n)} if active.any() else {}
+        else:
+            av = np.broadcast_to(np.asarray(available, dtype=bool).reshape(self.n, -1), (self.n, bs))
+            _bid_masks = {i: active & av[i] for i in range(self.n) if (active & av[i]).any()}
+            if (active & ~av.any(axis=0)).any():
+                raise ValueError("an active sample has no available agent to bid")
         for i, b in self._per_desk(cb.bid, _bid_masks):
             bid_mask = _bid_masks[i]
             bids = np.asarray(b, dtype=np.float64)
@@ -268,12 +281,12 @@ class ChainTurnEngine:
         for i in win_masks:
             if train_bid_rows:
                 self._held.append({"i": i, "kind": "bid", "mask": win_masks[i].copy(),
-                                   "turn": t, "rent": self.reward_rent})
+                                   "turn": t, "rent": float(self.rents[i])})
             # the act row carries the settled profit either way, so dropping the bid row
             # removes a training sample without touching the economy's arithmetic
             if train_act_rows:
                 self._held.append({"i": i, "kind": "act", "mask": win_masks[i].copy(),
-                                   "turn": t, "rent": self.reward_rent})
+                                   "turn": t, "rent": float(self.rents[i])})
         self.turn = t + 1
         return TurnResult(raw_bids=raw_bids, bid_vals=bid_vals, bidders=bidders_t,
                           winner=winner, price=price_t, chosen=chosen_t, win_masks=win_masks,
