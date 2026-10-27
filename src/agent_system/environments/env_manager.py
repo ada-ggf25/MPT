@@ -166,6 +166,26 @@ class LiberoEnvironmentManager(MinecraftEnvironmentManager):
         EnvironmentManagerBase.__init__(self, envs, projection_f, config)
         self._last_images: List[Any] = []
 
+    # The env server's privileged view (e.g. the next correct sub-instruction) travels in
+    # observations['privileged'] for EXTERNAL agents such as a simulated person
+    # (agent_system/agent/agents/external.py). No LLM prompt ever reads it: preprocess_batch uses
+    # only text / image / anchor / messages.
+    @staticmethod
+    def _privileged(info):
+        return {"oracle_next": (info or {}).get("oracle_next")}
+
+    def _pack(self, obs, infos):
+        packed = super()._pack(obs, infos)
+        packed["privileged"] = [self._privileged(info) for info in infos]
+        return packed
+
+    def cf_payload_to_obs(self, base_obs, s, payload):
+        out = super().cf_payload_to_obs(base_obs, s, payload)
+        priv = list(base_obs.get("privileged") or [{}] * len(out["text"]))
+        priv[s] = self._privileged(payload.get("info"))
+        out["privileged"] = priv
+        return out
+
     def _process_batch(self, batch_idx, total_batch_list, total_infos, success):
         for i in reversed(range(len(total_batch_list[batch_idx]))):
             if total_batch_list[batch_idx][i]['active_masks']:

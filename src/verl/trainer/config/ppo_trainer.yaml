@@ -392,6 +392,11 @@ agent: # only for multi-agent training
         bankruptcy: False
         bankruptcy_threshold: 0.0
         unavailable: []          # agent ids that may not bid (agents absent from the society)
+      external_agents: []        # participants WITHOUT trainable weights (agent_system/agent/agents/external.py),
+                                 #   appended after agent_ids; settled and booked, never trained, e.g.
+                                 #   - {name: "Human (oracle)", kind: oracle_human, rent: 0.5, bid: 0.2, p_correct: 0.9}
+                                 #   - {name: "Frontier (API)", kind: api_vlm, rent: 0.3, model: <model>,
+                                 #      base_url: <OpenAI-compatible URL>, api_key_env: OPENAI_API_KEY}
     openresearcher_chain:        # DEEP RESEARCH (Searcher: browser.search / Opener: browser.open /
                                  #   Finder: browser.find; ANY agent may answer; reward = judge verdict
                                  #   on the answering turn only). Same MPT training as minecraft_chain;

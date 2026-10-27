@@ -216,6 +216,11 @@ class CounterfactualCollector:
         """
         orch = self.orch
         bs = len(env_obs["text"])
+        if agent_id in getattr(orch, "external", {}):
+            # an external agent (no weights) bids in the branch auction too; it has no
+            # trainable row and no answer text (candidates never make it the winner/runner-up)
+            bids = orch.external[agent_id].bid(env_obs, self._one_hot(bs, s), step)
+            return None, "", float(bids[s])
         batch, bids = orch.agents[agent_id].bid_call(
             gen_batch=gen_batch, env_obs=env_obs, team_context=[""] * bs,
             actor_rollout_wg=orch._wg_bid(wgs, agent_id),
@@ -230,6 +235,8 @@ class CounterfactualCollector:
         """One act call restricted to sample ``s``; returns the emitted env action text."""
         orch = self.orch
         bs = len(env_obs["text"])
+        if agent_id in getattr(orch, "external", {}):
+            return orch.external[agent_id].act(env_obs, self._one_hot(bs, s), step)[s]
         _batch, emitted = orch.agents[agent_id].call(
             gen_batch=gen_batch, env_obs=env_obs, team_context=[""] * bs,
             actor_rollout_wg=orch._wg(wgs, agent_id),

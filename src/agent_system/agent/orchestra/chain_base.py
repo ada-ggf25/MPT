@@ -10,7 +10,9 @@ import numpy as np
 from transformers import PreTrainedTokenizer
 
 from verl import DataProto
+from agent_system.agent.agents.external import make_external
 from agent_system.agent.orchestra.base import BaseOrchestra
+from agent_system.environments.env_package.minecraft.envs import extract_instruction
 from economy_engine.engine import AlternatingPhase, ChainTurnEngine
 from economy_engine.population import PopulationLedger
 
@@ -59,9 +61,6 @@ class ChainOrchestraBase(BaseOrchestra):
         super().__init__(agent_ids=agent_ids, model_ids=model_ids,
                          agents_to_wg_mapping=agents_to_wg_mapping, tokenizers=tokenizers,
                          processors=processors, config=config)
-        if len(self.agents) < 2:
-            raise ValueError(f"{type(self).__name__} needs >=2 competing agents; "
-                             f"got agent_ids={agent_ids}.")
         self.desk_ids: List[str] = list(self.agent_ids)
         self.n = len(self.desk_ids)
 
@@ -70,6 +69,25 @@ class ChainOrchestraBase(BaseOrchestra):
 
         def _get(k, d):
             return getattr(cfg, k, d) if cfg is not None else d
+
+        # External agents (agent_system.agent.agents.external): participants WITHOUT trainable
+        # weights -- a person, an API model -- declared in this block's `external_agents` list
+        # and appended after the trainable agents (indices >= n_trainable). They bid, win, act,
+        # pay rent and are settled and booked like any agent, but they have no worker group and
+        # their rows never reach the trainer.
+        self.n_trainable = self.n
+        self.external: Dict[str, Any] = {}
+        _ext_specs = [dict(x) for x in (_get("external_agents", None) or [])]
+        for spec in _ext_specs:
+            ag = make_external(spec)
+            if ag.name in self.desk_ids:
+                raise ValueError(f"external agent name {ag.name!r} is already an agent id")
+            self.external[ag.name] = ag
+            self.desk_ids.append(ag.name)
+        self.n = len(self.desk_ids)
+        if self.n < 2:
+            raise ValueError(f"{type(self).__name__} needs >=2 competing agents; "
+                             f"got agent_ids={agent_ids} and {len(self.external)} external agents.")
 
         self.bid_max = float(_get("bid_max", 1.0))
         # Counterfactual preference mode (cf_preference=True): bid-phase iterations of the act/bid
@@ -100,14 +118,20 @@ class ChainOrchestraBase(BaseOrchestra):
         # and on its act row, both settled at profit - rent). MPT requires rent > 0. One number
         # (MPT: the same rent for everyone), or a list in agent_ids order (EoM-style: each agent
         # pays its own cost per turn, e.g. a frontier model or a human costs more).
+        # External agents take their rent from their own spec (`rent`, default: the shared rent,
+        # else 0.05); a list here covers the trainable agents, or every agent.
         _rent = _get("reward_rent", 0.05)
         if isinstance(_rent, (int, float)):
-            self.reward_rent = float(_rent)
+            _base, _default = [float(_rent)] * self.n_trainable, float(_rent)
         else:
-            self.reward_rent = [float(x) for x in _rent]
-            if len(self.reward_rent) != self.n:
-                raise ValueError(f"{self.DOMAIN_BLOCK}.reward_rent has {len(self.reward_rent)} "
-                                 f"entries for {self.n} agents")
+            _base, _default = [float(x) for x in _rent], 0.05
+            if len(_base) not in (self.n_trainable, self.n):
+                raise ValueError(f"{self.DOMAIN_BLOCK}.reward_rent has {len(_base)} entries for "
+                                 f"{self.n_trainable} trainable / {self.n} total agents")
+        if len(_base) == self.n_trainable:
+            _base += [float(sp.get("rent", _default)) for sp in _ext_specs]
+        self.reward_rent = float(_rent) if (isinstance(_rent, (int, float)) and not self.external) \
+            else _base
         # Revenue-share settlement is hard-wired in MPT (see the module docstring).
         self.revenue_share = bool(_get("revenue_share", True))
         assert self.revenue_share, "MPT requires revenue_share=True"
@@ -296,7 +320,13 @@ class ChainOrchestraBase(BaseOrchestra):
 
     def reset(self):
         super().reset()          # clears the buffer and every agent
+        for ag in self.external.values():
+            ag.reset()
         self._reset_episode()
+
+    def is_external(self, i: int) -> bool:
+        """Agent index i has no trainable weights (see agent_system.agent.agents.external)."""
+        return i >= self.n_trainable
 
     def note_step_rewards(self, rewards: np.ndarray):
         """Hook called by rollout_loop right after envs.step(): the per-turn env reward stream
@@ -391,6 +421,14 @@ class ChainOrchestraBase(BaseOrchestra):
             _others = sorted((b for i, b in _bids_s.items() if i != _w), reverse=True)
             if _min_lv is not None and _others[0] <= _min_lv + 1e-9:
                 continue
+            # External agents have no bid answer to resample: the pair needs a trainable winner,
+            # a trainable runner-up, and no external bid that could take the flipped turn.
+            if self.external:
+                _ru = max((i for i in _bids_s if i != _w), key=lambda i: _bids_s[i])
+                if self.is_external(_w) or self.is_external(_ru) or any(
+                        self.is_external(i) and b >= _bids_s[_ru]
+                        for i, b in _bids_s.items() if i not in (_w, _ru)):
+                    continue
             _cands.append({"sample": int(_s), "turn": int(t), "winner_idx": _w,
                            "bids": {self.desk_ids[i]: b for i, b in _bids_s.items()}})
         self.cf_turn_candidates = _cands or None
@@ -421,6 +459,8 @@ class ChainOrchestraBase(BaseOrchestra):
             @staticmethod
             def bid(i, mask):
                 aid = orch.desk_ids[i]
+                if orch.is_external(i):
+                    return orch.external[aid].bid(env_obs, mask, step)
                 bbatch, bids = orch.agents[aid].bid_call(
                     gen_batch=gen_batch, env_obs=env_obs, team_context=team_context,
                     actor_rollout_wg=orch._wg_bid(actor_rollout_wgs, aid),
@@ -432,6 +472,16 @@ class ChainOrchestraBase(BaseOrchestra):
             @staticmethod
             def act(i, mask):
                 aid = orch.desk_ids[i]
+                if orch.is_external(i):
+                    emitted = orch.external[aid].act(env_obs, mask, step)
+                    for s_ in np.nonzero(mask)[0]:
+                        text_actions[s_] = emitted[s_]
+                        _instr = extract_instruction(emitted[s_])
+                        acts["instr"][s_] = _instr
+                        acts["verb"][s_] = (_instr or "").split(" ")[0].lower()
+                        acts["ok"][s_] = _instr is not None
+                        acts["raw"][s_] = str(emitted[s_])[:orch._trace_text]
+                    return
                 abatch, emitted = orch.agents[aid].call(
                     gen_batch=gen_batch, env_obs=env_obs, team_context=team_context,
                     actor_rollout_wg=orch._wg(actor_rollout_wgs, aid),
@@ -448,6 +498,8 @@ class ChainOrchestraBase(BaseOrchestra):
 
             @staticmethod
             def emit(i, kind, turn, mask, credit, rent):
+                if orch.is_external(i):
+                    return        # no batch, no training row: settled in the ledger only
                 batch = orch._handles[(turn, i, kind)]
                 orch.save_to_buffer(orch.desk_ids[i], orch._stamp(batch, mask, credit, rent, bs))
 
@@ -482,6 +534,8 @@ class ChainOrchestraBase(BaseOrchestra):
         class _Sink:
             @staticmethod
             def emit(i, kind, turn, mask, credit, rent):
+                if orch.is_external(i):
+                    return
                 batch = orch._handles[(turn, i, kind)]
                 out.append({"agent_id": orch.desk_ids[i],
                             "batch": orch._stamp(batch, mask, credit, rent, bs)})
