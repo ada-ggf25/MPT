@@ -157,6 +157,28 @@ class MinecraftEnvironmentManager(EnvironmentManagerBase):
         success['minecraft_success_rate'].append(0.0)
 
 
+class LiberoEnvironmentManager(MinecraftEnvironmentManager):
+    """LIBERO (served by eom-robotics' Stage 2 env server): the same multi-turn, one-frame-per-turn
+    contract as Minecraft -- the server renders the status text and the agent-view frame, and the
+    winner's instruction is executed by a low-level policy (pi0.5) -- so only the env_name check and
+    the success-rate keys differ."""
+    def __init__(self, envs, projection_f, config):
+        EnvironmentManagerBase.__init__(self, envs, projection_f, config)
+        self._last_images: List[Any] = []
+
+    def _process_batch(self, batch_idx, total_batch_list, total_infos, success):
+        for i in reversed(range(len(total_batch_list[batch_idx]))):
+            if total_batch_list[batch_idx][i]['active_masks']:
+                info = total_infos[batch_idx][i]
+                won = float(info.get('won', 0.0))
+                success['success_rate'].append(won)
+                success[f"{info.get('data_source', 'libero')}_success_rate"].append(won)
+                return
+        # zero-row fallback, as in MinecraftEnvironmentManager
+        success['success_rate'].append(0.0)
+        success['libero_success_rate'].append(0.0)
+
+
 class NavilaEnvironmentManager(EnvironmentManagerBase):
     """NaVILA robot navigation: MULTI-TURN and multimodal, mirroring MinecraftEnvironmentManager.
 
@@ -439,6 +461,21 @@ def make_envs(config):
                                              group_n=val_group_n, is_train=False, frames_per_action=_K)
             val_envs = MinecraftEnvironmentManager(_val_envs, projection_f, config)
         return envs, val_envs
+    elif "libero" in config.env.env_name.lower():
+        from agent_system.environments.env_package.libero import (
+            build_libero_envs, libero_projection)
+        _envs = build_libero_envs(seed=config.env.seed, env_num=config.data.train_batch_size,
+                                  group_n=group_n, is_train=True)
+        projection_f = partial(libero_projection)
+        if cf_on:
+            _envs.cf_bind(timeout=_cf_timeout(config))
+        envs = LiberoEnvironmentManager(_envs, projection_f, config)
+        val_envs = None
+        if val_only:
+            _val_envs = build_libero_envs(seed=config.env.seed + 1000, env_num=config.data.val_batch_size,
+                                          group_n=val_group_n, is_train=False)
+            val_envs = LiberoEnvironmentManager(_val_envs, projection_f, config)
+        return envs, val_envs
     elif "navila" in config.env.env_name.lower():
         from agent_system.environments.env_package.navila import (
             build_navila_envs, navila_projection)
@@ -472,4 +509,4 @@ def make_envs(config):
         return envs, val_envs
     else:
         raise ValueError(f"Unsupported env.env_name {config.env.env_name!r}; this release ships "
-                         f"minecraft* | navila* | openresearcher")
+                         f"minecraft* | libero* | navila* | openresearcher")

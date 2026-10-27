@@ -175,13 +175,15 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
 
         if orchestra_type == "minecraft_chain":
             from agent_system.agent.orchestra.minecraft import MinecraftChainOrchestra as orchestra
+        elif orchestra_type == "libero_chain":
+            from agent_system.agent.orchestra.libero import LiberoChainOrchestra as orchestra
         elif orchestra_type == "navila_chain":
             from agent_system.agent.orchestra.navila import NavilaChainOrchestra as orchestra
         elif orchestra_type == "openresearcher_chain":
             from agent_system.agent.orchestra.openresearcher import OpenResearcherChainOrchestra as orchestra
         else:
             raise ValueError(f"Unknown orchestra_type {orchestra_type!r}; this release ships "
-                             f"minecraft_chain | navila_chain | openresearcher_chain")
+                             f"minecraft_chain | libero_chain | navila_chain | openresearcher_chain")
 
         self.multiagent_orchestra: BaseOrchestra = orchestra(
             agent_ids=agent_ids,

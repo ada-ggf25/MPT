@@ -303,7 +303,7 @@ agent: # only for multi-agent training
   #  Dictionary format - parameter paths mapped to lists of values per agent
   #   agent_specific_parameters.actor.optim.lr: [1e-6,1e-6,1e-7]
   #   agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu: [4,8,8]
-  orchestra_type: minecraft_chain  # minecraft_chain | navila_chain | openresearcher_chain
+  orchestra_type: minecraft_chain  # minecraft_chain | libero_chain | navila_chain | openresearcher_chain
   orchestra:
     # MPT societies: one sealed-bid auction per env turn (levels {0,.2,.4,.6,.8}, 0 = pass, an
     # all-pass turn reopens at the 0.2 floor), the winner acts on its own action slice,
@@ -364,6 +364,34 @@ agent: # only for multi-agent training
       cf_http_timeout: 1200.0
       alt_act_iters: 4
       alt_bid_iters: 1
+    libero_chain:                # LIBERO (Grasp / Place / Articulate desks, parser-enforced verb whitelists;
+                                 #   a frozen pi0.5 executes the winner's instruction on eom-robotics'
+                                 #   Stage 2 env server; reward = newly met BDDL goal conditions)
+      revenue_share: True
+      bid_pass: True
+      bid_levels: [0.0, 0.2, 0.4, 0.6, 0.8]
+      seg_scale: True
+      bid_max: 1.0
+      bid_max_tokens: 96
+      bid_sees_image: True
+      reward_scale: 1.0
+      reward_rent: 0.05          # a number (MPT) or a list in agent_ids order (rent at each agent's cost)
+      train_bid_rows: True
+      train_act_rows: True
+      profit_as_reward: True
+      cf_preference: True        # needs ONE env server with >= batch_size+2 slots (snapshot=1)
+      cf_max_pairs: 4
+      cf_k: 6
+      cf_p: 4
+      cf_http_timeout: 1200.0
+      alt_act_iters: 4
+      alt_bid_iters: 1
+      economy:                   # EoM's population economy (economy_engine/population.py); with these
+                                 #   defaults nobody goes bankrupt and every agent bids (= MPT)
+        wealth_init: 1.0
+        bankruptcy: False
+        bankruptcy_threshold: 0.0
+        unavailable: []          # agent ids that may not bid (agents absent from the society)
     openresearcher_chain:        # DEEP RESEARCH (Searcher: browser.search / Opener: browser.open /
                                  #   Finder: browser.find; ANY agent may answer; reward = judge verdict
                                  #   on the answering turn only). Same MPT training as minecraft_chain;
@@ -391,7 +419,7 @@ agent: # only for multi-agent training
       cf_http_timeout: 1200.0    # unused by the in-process deep-research envs; kept for uniformity
 
 env:
-  env_name: minecraft_bare     # minecraft_bare | navila | openresearcher
+  env_name: minecraft_bare     # minecraft_bare | libero | navila | openresearcher
   seed: 0
   max_steps: 50
   history_length: 2
