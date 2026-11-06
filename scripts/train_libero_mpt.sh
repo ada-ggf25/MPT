@@ -1,12 +1,12 @@
 #!/bin/bash
-# train_libero_mpt.sh -- MPT on LIBERO, three agents (Mover / Hand / Stopper).
+# train_libero_mpt.sh -- MPT on LIBERO, three agents (Placer / Operator / Stopper).
 #
 # The MPT recipe of train_mc_mpt.sh (sealed-bid auction on {0,.2,.4,.6,.8}, revenue-share
 # settlement, profit - rent as reward, REINFORCE with a per-agent baseline, 4 act : 1 bid
 # iterations with the counterfactual preference loss), on a robot-manipulation setting:
-#   * the winner's movement command is carried out by a shared controller on eom-robotics' Stage 2
-#     env server (`python -m eom_robotics.stage2.server --backend commands --slots TBS*GROUP+2`);
-#     reward = goal conditions met for the first time;
+#   * the winner's instruction is executed by a frozen pi0.5 on eom-robotics' Stage 2 env server
+#     (`python -m eom_robotics.stage2.server --backend policy --slots TBS*GROUP+2`, next to an openpi
+#     policy server); reward = goal conditions met for the first time;
 #   * the agents start from warm-up checkpoints (eom-robotics, stage2/warm_agents.py): each learned
 #     its own slice of commands from an expert, and only the FORMAT of a bid;
 #   * EoM's population economy is available through agent.orchestra.libero_chain.economy.* and a
@@ -15,8 +15,8 @@
 # Usage:
 #   LIBERO_ENV_URL=http://<host>:31700 BASE_MODEL=/path/to/Qwen3-VL-4B-Instruct bash scripts/train_libero_mpt.sh [hydra overrides...]
 # Knobs (env, defaults in brackets):
-#   BASE_MODEL [unset -> required]  M_MOVER/M_HAND/M_STOPPER [$BASE_MODEL]  DATA [<repo>/data/libero]
-#   NGPUS [4] TBS [8] GROUP [1] MAXSTEPS [60] EXP [libero_mpt] RENT [0.05] GPU_MEM [0.4]
+#   BASE_MODEL [unset -> required]  M_PLACER/M_OPERATOR/M_STOPPER [$BASE_MODEL]  DATA [<repo>/data/libero]
+#   NGPUS [4] TBS [8] GROUP [1] MAXSTEPS [12] EXP [libero_mpt] RENT [0.05] GPU_MEM [0.4]
 #   SAVE_FREQ [50] KEEP_CKPT [2] LOGGER ['["console"]']
 #   CKPT_DIR [$MPT_WORK/checkpoints/libero] LIBERO_ALT_COUNTER [$MPT_WORK/rl/.libero_alt_counter_$EXP]
 #   LIBERO_CHAIN_TRACE [$MPT_WORK/rl/libero_chain_trace_$EXP.jsonl]  plus the common.sh variables.
@@ -29,14 +29,14 @@ if [ -z "${BASE_MODEL:-}" ]; then
   [ "${DRY_RUN:-0}" = "1" ] && BASE_MODEL=/path/to/Qwen3-VL-4B-Instruct || \
     { echo "set BASE_MODEL to a local VLM checkpoint dir (e.g. Qwen3-VL-4B-Instruct)"; exit 1; }
 fi
-M_MOVER=${M_MOVER:-$BASE_MODEL}
-M_HAND=${M_HAND:-$BASE_MODEL}
+M_PLACER=${M_PLACER:-$BASE_MODEL}
+M_OPERATOR=${M_OPERATOR:-$BASE_MODEL}
 M_STOPPER=${M_STOPPER:-$BASE_MODEL}
 DATA=${DATA:-$REPO/data/libero}
 NGPUS=${NGPUS:-4}
 TBS=${TBS:-8}
 GROUP=${GROUP:-1}
-MAXSTEPS=${MAXSTEPS:-60}
+MAXSTEPS=${MAXSTEPS:-12}
 EXP=${EXP:-libero_mpt}
 RENT=${RENT:-0.05}
 GPU_MEM=${GPU_MEM:-0.4}
@@ -118,8 +118,8 @@ run_or_echo "$PY" -m verl.trainer.main_ppo \
     env.max_steps="$MAXSTEPS" \
     env.rollout.n="$GROUP" \
     agent.multi_agent=True \
-    'agent.agent_ids=["Mover Desk (libero)","Hand Desk (libero)","Stopper Desk (libero)"]' \
-    "agent.model_ids=[\"$M_MOVER\",\"$M_HAND\",\"$M_STOPPER\"]" \
+    'agent.agent_ids=["Placer Desk (libero)","Operator Desk (libero)","Stopper Desk (libero)"]' \
+    "agent.model_ids=[\"$M_PLACER\",\"$M_OPERATOR\",\"$M_STOPPER\"]" \
     agent.model_sharing=False \
     agent.orchestra_type=libero_chain \
     +agent.mixed_modality=True \

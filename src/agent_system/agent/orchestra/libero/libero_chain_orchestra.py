@@ -10,9 +10,8 @@ from agent_system.agent.orchestra.chain_base import ChainOrchestraBase
 
 # The env server (eom_robotics.stage2) renders, per turn:
 #     TASK: put the bowl on the plate and turn on the stove
-#     Gripper at x=-10 y=4 z=94, open
 #     Status: goal conditions met: 1/2
-#     Last: gripper open
+#     Last: put the bowl on the plate
 _GOALS_RE = re.compile(r"(?:goal conditions met|sub-goals done):\s*(\d+)\s*/\s*(\d+)")
 _DEC_RE = re.compile(r"Decision\s+(\d+)\s*/\s*(\d+)")
 
@@ -26,8 +25,8 @@ def parse_progress(text: str) -> Dict[str, Any]:
 
 
 class LiberoChainOrchestra(ChainOrchestraBase):
-    """MPT auction over LIBERO env turns (Mover / Hand / Stopper; a shared controller on the env
-    server carries out the winner's command). The training logic is
+    """MPT auction over LIBERO env turns (Placer / Operator / Stopper; a frozen pi0.5 on the env
+    server carries out the winner's instruction). The training logic is
     ChainOrchestraBase; this class adds the progress parsing and the trace."""
 
     DOMAIN_BLOCK = "libero_chain"

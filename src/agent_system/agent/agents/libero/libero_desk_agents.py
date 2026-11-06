@@ -7,16 +7,16 @@ from transformers import PreTrainedTokenizer
 
 from verl import DataProto
 from agent_system.agent.agents.base import BaseAgent
-from agent_system.agent.agents.libero.command_prompts import ACT_BODY, AGENTS, BID_BODY, IMAGE_HEADER, fill
+from agent_system.agent.agents.libero.society_prompts import ACT_BODY, AGENTS, BID_BODY, IMAGE_HEADER, fill
 from agent_system.agent.agents.minecraft.minecraft_chain_agent import first_verb
 from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.utils import parse_open_bid
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.environments.env_package.minecraft.envs import extract_instruction
 
-# The LIBERO agents follow the navigation desks one for one: each owns a slice of the action space,
-# here movement commands for a shared controller on the env server, and a parser enforces it. The
-# prompts and slices live in command_prompts.py, because the warm-up must train on the same text.
+# The LIBERO agents follow the crafting desks: each owns a slice of the action space, here the
+# instructions pi0.5 trained on, and a parser enforces it. The prompts and slices live in
+# society_prompts.py, because the warm-up must train on the same text.
 
 
 class _LiberoDeskBase(BaseAgent):
@@ -109,19 +109,19 @@ class _LiberoDeskBase(BaseAgent):
             if ok:
                 emitted.append(f"<action>{instr}</action>")
             else:
-                emitted.append(f"[whitelist-reject] the {self.DESK} agent may only write commands "
+                emitted.append(f"[whitelist-reject] the {self.DESK} agent may only write instructions "
                                f"starting with {'|'.join(self.VERBS)}; got {fw!r}")
         return emitted, instrs, verbs, oks
 
 
-@AgentRegistry.register("Mover Desk (libero)")
-class MoverDeskAgent(_LiberoDeskBase):
-    AGENT_NAME = "Mover Desk (libero)"
+@AgentRegistry.register("Placer Desk (libero)")
+class PlacerDeskAgent(_LiberoDeskBase):
+    AGENT_NAME = "Placer Desk (libero)"
 
 
-@AgentRegistry.register("Hand Desk (libero)")
-class HandDeskAgent(_LiberoDeskBase):
-    AGENT_NAME = "Hand Desk (libero)"
+@AgentRegistry.register("Operator Desk (libero)")
+class OperatorDeskAgent(_LiberoDeskBase):
+    AGENT_NAME = "Operator Desk (libero)"
 
 
 @AgentRegistry.register("Stopper Desk (libero)")
@@ -131,4 +131,4 @@ class StopperDeskAgent(_LiberoDeskBase):
 
 DESK_VERBS = {name: spec["first_words"] for name, spec in AGENTS.items()}
 
-__all__ = ["MoverDeskAgent", "HandDeskAgent", "StopperDeskAgent", "DESK_VERBS"]
+__all__ = ["PlacerDeskAgent", "OperatorDeskAgent", "StopperDeskAgent", "DESK_VERBS"]
