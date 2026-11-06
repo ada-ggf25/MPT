@@ -1,13 +1,12 @@
 # LIBERO environment for the MPT trainer -- CLIENT side.
 #
-# The simulator (LIBERO / MuJoCo) and the low-level executor (pi0.5, served by openpi) live in a
-# separate env server: eom-robotics' Stage 2 server (`python -m eom_robotics.stage2.server`), which
+# The simulator (LIBERO / MuJoCo) and the shared movement controller live in a separate env server: eom-robotics' Stage 2 server (`python -m eom_robotics.stage2.server`), which
 # speaks the same JSON/HTTP contract as MPT's Minecraft server (/health, /reset, /step, /snapshot,
 # /restore, /step_slot). So the client IS the Minecraft client, pointed at LIBERO_ENV_URL; only the
 # health check and the counterfactual binding read that server's own keys.
 #
-#   MPT VLM agent --(<action>text instruction</action>)--> [server] pi0.5 -> up to K control steps
-#                   <--(agent-view frame + status text + goal-condition reward)---------
+#   MPT VLM agent --(<action>one movement command</action>)--> [server] controller -> control steps
+#                   <--(scene and wrist image + status text + goal-condition reward)----------
 import os
 from typing import List
 

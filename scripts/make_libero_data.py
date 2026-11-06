@@ -4,6 +4,7 @@ The trainer pops env_kwargs and posts it to the env server's /reset.
 
     python scripts/make_libero_data.py --suite libero_10 --train-inits 0-39 --val-inits 40-49
     python scripts/make_libero_data.py --fake      # rows for eom-robotics' FakeBackend (no LIBERO)
+    python scripts/make_libero_data.py --commands  # rows for the shared controller (LIBERO-Goal)
 
 Without --fake, the task texts come from LIBERO itself (pip install libero in this env).
 """
@@ -21,6 +22,19 @@ def libero_tasks(suite):
 
     bench = benchmark.get_benchmark_dict()[suite]()
     return [(i, bench.get_task(i).language) for i in range(bench.n_tasks)]
+
+
+# eom_robotics.stage2.driving.TASKS: six goals and the four chains without the drawer. A test there
+# checks that the two lists agree. Training covers all ten; held-out evaluation uses starts 40-49.
+COMMAND_TASKS = (
+    "put the bowl on the plate", "put the cream cheese in the bowl", "turn on the stove",
+    "put the wine bottle on top of the cabinet", "push the plate to the front of the stove",
+    "put the wine bottle on the rack",
+    "put the bowl on the plate and turn on the stove",
+    "put the cream cheese in the bowl and turn on the stove",
+    "turn on the stove and put the wine bottle on top of the cabinet",
+    "push the plate to the front of the stove and put the wine bottle on the rack",
+)
 
 
 def fake_tasks():
@@ -45,6 +59,7 @@ def main():
     ap.add_argument("--val-inits", default="40-49")
     ap.add_argument("--max-steps-per-turn", type=int, default=150)
     ap.add_argument("--fake", action="store_true")
+    ap.add_argument("--commands", action="store_true")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "data", "libero"))
     args = ap.parse_args()
 
@@ -58,6 +73,12 @@ def main():
                 for j in inits:
                     rows.append(row("libero_fake", split, len(rows), text,
                                     {"task": name, "seed": 1000 * k + j, "data_source": "libero_fake"}))
+        elif args.commands:
+            for text in COMMAND_TASKS:
+                for j in inits:
+                    rows.append(row("libero_goal_commands", split, len(rows), text,
+                                    {"task": text, "init_id": j, "seed": j,
+                                     "data_source": "libero_goal_commands"}))
         else:
             for task_id, text in libero_tasks(args.suite):
                 for j in inits:

@@ -364,15 +364,15 @@ agent: # only for multi-agent training
       cf_http_timeout: 1200.0
       alt_act_iters: 4
       alt_bid_iters: 1
-    libero_chain:                # LIBERO (Grasp / Place / Articulate desks, parser-enforced verb whitelists;
-                                 #   a frozen pi0.5 executes the winner's instruction on eom-robotics'
-                                 #   Stage 2 env server; reward = newly met BDDL goal conditions)
+    libero_chain:                # LIBERO (Mover / Hand / Stopper, parser-enforced command slices; a shared
+                                 #   controller on eom-robotics' Stage 2 env server carries out the
+                                 #   winner's command; reward = goal conditions met for the first time)
       revenue_share: True
       bid_pass: True
       bid_levels: [0.0, 0.2, 0.4, 0.6, 0.8]
       seg_scale: True
       bid_max: 1.0
-      bid_max_tokens: 96
+      bid_max_tokens: 16
       bid_sees_image: True
       reward_scale: 1.0
       reward_rent: 0.05          # a number (MPT) or a list in agent_ids order (rent at each agent's cost)
