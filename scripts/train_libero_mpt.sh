@@ -17,7 +17,10 @@
 # Knobs (env, defaults in brackets):
 #   BASE_MODEL [unset -> required]  M_PLACER/M_OPERATOR/M_STOPPER [$BASE_MODEL]  DATA [<repo>/data/libero]
 #   NGPUS [4] TBS [8] GROUP [1] MAXSTEPS [12] EXP [libero_mpt] RENT [0.05] GPU_MEM [0.4]
-#   SAVE_FREQ [50] KEEP_CKPT [2] LOGGER ['["console"]']
+#   SAVE_FREQ [50] KEEP_CKPT [2] LOGGER ['["console"]'] RESUME_MODE [auto]
+#   ALT_ACT [4] ALT_BID [1] CF [True]: the act/bid cycle and the counterfactual preference phase;
+#     evaluation sets ALT_ACT=0 ALT_BID=0 CF=False with trainer.val_only=True (eom-robotics'
+#     `submit.sh eval` does this, on data.val_files from the held-out starts)
 #   CKPT_DIR [$MPT_WORK/checkpoints/libero] LIBERO_ALT_COUNTER [$MPT_WORK/rl/.libero_alt_counter_$EXP]
 #   LIBERO_CHAIN_TRACE [$MPT_WORK/rl/libero_chain_trace_$EXP.jsonl]  plus the common.sh variables.
 set -e
@@ -43,6 +46,10 @@ GPU_MEM=${GPU_MEM:-0.4}
 SAVE_FREQ=${SAVE_FREQ:-50}
 KEEP_CKPT=${KEEP_CKPT:-2}
 CKPT_DIR=${CKPT_DIR:-$MPT_WORK/checkpoints/libero}
+RESUME_MODE=${RESUME_MODE:-auto}
+ALT_ACT=${ALT_ACT:-4}
+ALT_BID=${ALT_BID:-1}
+CF=${CF:-True}
 
 : "${LIBERO_ENV_URL:?set LIBERO_ENV_URL to the env server (e.g. http://host:31700)}"
 case "$LIBERO_ENV_URL" in
@@ -87,7 +94,7 @@ print(f"env server ok: slots={slots} (need {need}) backend={h.get('backend')}")
 EOF
 fi
 
-echo "MPT LIBERO: exp=$EXP alt=4 act : 1 bid (CF preference) counter=$LIBERO_ALT_COUNTER"
+echo "MPT LIBERO: exp=$EXP alt=$ALT_ACT act : $ALT_BID bid (CF preference $CF) counter=$LIBERO_ALT_COUNTER"
 
 run_or_echo "$PY" -m verl.trainer.main_ppo \
     algorithm.adv_estimator=reinforce_mean \
@@ -125,10 +132,10 @@ run_or_echo "$PY" -m verl.trainer.main_ppo \
     +agent.mixed_modality=True \
     agent.orchestra.libero_chain.reward_rent="$RENT" \
     agent.orchestra.libero_chain.profit_as_reward=True \
-    agent.orchestra.libero_chain.alt_act_iters=4 \
-    agent.orchestra.libero_chain.alt_bid_iters=1 \
-    agent.orchestra.libero_chain.cf_preference=True \
-    actor_rollout_ref.actor.bid_pref_enable=True \
+    agent.orchestra.libero_chain.alt_act_iters="$ALT_ACT" \
+    agent.orchestra.libero_chain.alt_bid_iters="$ALT_BID" \
+    agent.orchestra.libero_chain.cf_preference="$CF" \
+    actor_rollout_ref.actor.bid_pref_enable="$CF" \
     actor_rollout_ref.actor.bid_pref_scope=answer \
     reward_model.reward_manager=episode \
     trainer.n_gpus_per_node="$NGPUS" \
@@ -137,7 +144,7 @@ run_or_echo "$PY" -m verl.trainer.main_ppo \
     trainer.experiment_name="$EXP" \
     trainer.logger="$LOGGER" \
     trainer.default_local_dir="$CKPT_DIR/$EXP" \
-    trainer.resume_mode=auto \
+    trainer.resume_mode="$RESUME_MODE" \
     trainer.save_freq="$SAVE_FREQ" \
     trainer.max_actor_ckpt_to_keep="$KEEP_CKPT" \
     trainer.max_critic_ckpt_to_keep="$KEEP_CKPT" \
