@@ -73,6 +73,16 @@ def fill(body: str, agent: dict, n_desks: int) -> str:
     return body
 
 
+def normalize(instruction: str) -> str:
+    """An instruction as the menus compare it: lower case, single spaces, no final full stop."""
+    return " ".join(instruction.strip().lower().rstrip(".").split())
+
+
+def sentences(agent: dict) -> tuple:
+    """An agent's menu: the exact sentences it may write."""
+    return tuple(normalize(s) for s in agent["verbs"].split("|"))
+
+
 def agent_for(instruction: str, agents: dict = AGENTS) -> str | None:
     """Which agent's slice an instruction belongs to."""
     words = instruction.strip().lower().split()

@@ -374,6 +374,8 @@ agent: # only for multi-agent training
       bid_max: 1.0
       bid_max_tokens: 16
       bid_sees_image: True
+      exact_menu: True           # only an agent's own menu sentences pass; False = the first-word check
+                                 #   used before 2026-11-08 (it let agents paraphrase into other slices)
       reward_scale: 1.0
       reward_rent: 0.05          # a number (MPT) or a list in agent_ids order (rent at each agent's cost)
       train_bid_rows: True

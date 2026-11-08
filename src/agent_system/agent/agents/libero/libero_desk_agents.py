@@ -7,7 +7,8 @@ from transformers import PreTrainedTokenizer
 
 from verl import DataProto
 from agent_system.agent.agents.base import BaseAgent
-from agent_system.agent.agents.libero.society_prompts import ACT_BODY, AGENTS, BID_BODY, IMAGE_HEADER, fill
+from agent_system.agent.agents.libero.society_prompts import (ACT_BODY, AGENTS, BID_BODY, IMAGE_HEADER, fill,
+                                                             normalize, sentences)
 from agent_system.agent.agents.minecraft.minecraft_chain_agent import first_verb
 from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.utils import parse_open_bid
@@ -38,6 +39,11 @@ class _LiberoDeskBase(BaseAgent):
 
         self.SPEC = AGENTS[self.AGENT_NAME]
         self.DESK, self.VERBS = self.SPEC["desk"], self.SPEC["first_words"]
+        # exact_menu: only the agent's own sentences pass (pi0.5 trained on exactly these). Off, the old
+        # first-word check, which let agents paraphrase ("push the bowl onto the plate" passed as the
+        # Operator's because it starts with "push"); runs before 2026-11-08 used it.
+        self._exact = bool(_get("exact_menu", True))
+        self.MENU = sentences(self.SPEC)
 
         assert bool(_get("bid_pass", True)), "MPT uses bid_pass=True (level 0 = pass)"
         self._bid_prompt = (IMAGE_HEADER if self._bid_image else "") + fill(BID_BODY, self.SPEC, self._n_desks)
@@ -102,15 +108,19 @@ class _LiberoDeskBase(BaseAgent):
                 continue
             instr = extract_instruction(text_responses[i] if isinstance(text_responses[i], str) else "")
             fw = first_verb(instr)
-            ok = bool(instr) and fw in self.VERBS
+            if self._exact:
+                ok = bool(instr) and normalize(instr) in self.MENU
+                instr = normalize(instr) if ok else instr
+            else:
+                ok = bool(instr) and fw in self.VERBS
             instrs.append(instr)
             verbs.append(fw)
             oks.append(ok)
             if ok:
                 emitted.append(f"<action>{instr}</action>")
             else:
-                emitted.append(f"[whitelist-reject] the {self.DESK} agent may only write instructions "
-                               f"starting with {'|'.join(self.VERBS)}; got {fw!r}")
+                allowed = ' | '.join(self.MENU) if self._exact else f"instructions starting with {'|'.join(self.VERBS)}"
+                emitted.append(f"[whitelist-reject] the {self.DESK} agent may only write: {allowed}; got {instr!r}")
         return emitted, instrs, verbs, oks
 
 
