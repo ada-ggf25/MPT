@@ -3,6 +3,11 @@
 
 Agents partition the action space, as in MPT's crafting and navigation: each writes one short
 instruction for a shared pretrained executor (pi0.5), and a parser rejects anything outside its slice.
+
+Since 2026-11-14 the replies follow MPT's crafting prompts (paper App. B.1.4): a bid is ONE short
+sentence of reasoning that cites the status, then the level; an action is reasoning, then the
+instruction. Before that, agents replied with a bare <bid> or <action> (Vault
+Review-2026-11-13-MPT-Fidelity-Audit, row 3).
 """
 
 IMAGE_HEADER = "# Cameras: the scene on the left, the wrist on the right\n<image>\n\n"
@@ -16,14 +21,17 @@ BID_BODY = (
     "policy carries out the winner's instruction. Exactly ONE agent acts each turn, decided by a "
     "sealed-bid auction you are bidding in now. If you win you may ONLY write: {verbs}. {desk_hint}\n"
     "# Bidding (revenue share, five levels)\n"
-    "Your bid is the share of your income this turn you pass back to the agent that acted before you. "
-    "The HIGHEST bid wins; only the winner pays a small rent.\n"
+    "Your bid is the share of your income this turn you pass back to the agent that acted before you "
+    "(you are buying the state it produced). The HIGHEST bid wins; only the winner pays a small rent.\n"
+    "First read the status lines literally and decide whether YOUR instructions can advance the task "
+    "from THIS exact state. Then bid:\n"
     "  0    = pass. My instruction cannot help now; another agent must act first.\n"
     "  0.2  = my instruction barely helps here.\n"
     "  0.4  = my instruction is useful here.\n"
     "  0.6  = my instruction is important here.\n"
     "  0.8  = I am the bottleneck: the task cannot progress without me right now.\n"
-    "Reply with exactly one of 0, 0.2, 0.4, 0.6, 0.8 in this form:\n"
+    "Answer with ONE short sentence of reasoning that cites the status, then the number, for example:\n"
+    "<think>one sentence about which goals hold and what my instructions can do</think>\n"
     "<bid>0.4</bid>\n"
 )
 
@@ -33,9 +41,12 @@ ACT_BODY = (
     "You write the single instruction for this turn. A trained robot policy carries it out. "
     "HARD CONSTRAINT, enforced by a parser: you may ONLY write: {verbs}. Anything else is REJECTED, "
     "the turn is wasted, and you still pay. {desk_hint}\n"
-    "Reply with one instruction in this form:\n"
+    "Reply with <think>your reasoning</think> then the instruction wrapped EXACTLY like this:\n"
     "<action>{example}</action>\n"
 )
+
+# MPT's response caps for the crafting setting (Table 3): an action 320 tokens, a bid probe 96.
+ACT_TOKENS, BID_TOKENS = 320, 96
 
 PLACE = ("put the bowl on the plate | put the cream cheese in the bowl | "
          "put the wine bottle on top of the cabinet | put the wine bottle on the rack")

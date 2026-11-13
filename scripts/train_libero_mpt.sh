@@ -8,7 +8,9 @@
 #     (`python -m eom_robotics.stage2.server --backend policy --slots TBS*GROUP+2`, next to an openpi
 #     policy server); reward = goal conditions met for the first time;
 #   * the agents start from warm-up checkpoints (eom-robotics, stage2/warm_agents.py): each learned
-#     its own slice of commands from an expert, and only the FORMAT of a bid;
+#     its own slice of commands from an expert, and reasoned bids at every turn (MPT's cold start;
+#     random bid labels before 2026-11-14); prompt and response caps are MPT's crafting values
+#     (3072 / 320 tokens; bids 96);
 #   * EoM's population economy is available through agent.orchestra.libero_chain.economy.* and a
 #     per-agent reward_rent list (see the yaml block); the defaults are MPT's fixed society.
 #
@@ -102,8 +104,8 @@ run_or_echo "$PY" -m verl.trainer.main_ppo \
     algorithm.group_by_agent_id=True \
     data.train_files="$DATA/train.parquet" \
     data.train_batch_size="$TBS" \
-    data.max_prompt_length=1024 \
-    data.max_response_length=32 \
+    data.max_prompt_length=3072 \
+    data.max_response_length=320 \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=null \
     actor_rollout_ref.model.use_remove_padding=False \

@@ -372,7 +372,7 @@ agent: # only for multi-agent training
       bid_levels: [0.0, 0.2, 0.4, 0.6, 0.8]
       seg_scale: True
       bid_max: 1.0
-      bid_max_tokens: 16
+      bid_max_tokens: 96         # MPT's crafting cap: one sentence of reasoning + <bid> (16 before 2026-11-14)
       bid_sees_image: True
       exact_menu: True           # only an agent's own menu sentences pass; False = the first-word check
                                  #   used before 2026-11-08 (it let agents paraphrase into other slices)

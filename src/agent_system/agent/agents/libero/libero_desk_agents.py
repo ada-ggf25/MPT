@@ -30,7 +30,7 @@ class _LiberoDeskBase(BaseAgent):
             return getattr(cfg, k, d) if cfg is not None else d
 
         self._bid_max = float(_get("bid_max", 1.0))
-        self._bid_max_tokens = int(_get("bid_max_tokens", 16))
+        self._bid_max_tokens = int(_get("bid_max_tokens", 96))  # reasoning, then <bid> (MPT)
         self._bid_image = bool(_get("bid_sees_image", True))
         try:
             self._n_desks = len(config.agent.agent_ids)
