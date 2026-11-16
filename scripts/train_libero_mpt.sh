@@ -9,7 +9,7 @@
 #     policy server); reward = goal conditions met for the first time;
 #   * the agents start from warm-up checkpoints (eom-robotics, stage2/warm_agents.py): each learned
 #     its own slice of commands from an expert, and reasoned bids at every turn (MPT's cold start;
-#     random bid labels before 2026-11-14); prompt and response caps are MPT's crafting values
+#     random bid labels before 2026-11-13); prompt and response caps are MPT's crafting values
 #     (3072 / 320 tokens; bids 96);
 #   * EoM's population economy is available through agent.orchestra.libero_chain.economy.* and a
 #     per-agent reward_rent list (see the yaml block); the defaults are MPT's fixed society.

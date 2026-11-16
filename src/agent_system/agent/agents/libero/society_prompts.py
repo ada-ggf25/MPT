@@ -4,7 +4,7 @@
 Agents partition the action space, as in MPT's crafting and navigation: each writes one short
 instruction for a shared pretrained executor (pi0.5), and a parser rejects anything outside its slice.
 
-Since 2026-11-14 the replies follow MPT's crafting prompts (paper App. B.1.4): a bid is ONE short
+Since 2026-11-13 the replies follow MPT's crafting prompts (paper App. B.1.4): a bid is ONE short
 sentence of reasoning that cites the status, then the level; an action is reasoning, then the
 instruction. Before that, agents replied with a bare <bid> or <action> (Vault
 Review-2026-11-13-MPT-Fidelity-Audit, row 3).
