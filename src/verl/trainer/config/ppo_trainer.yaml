@@ -367,6 +367,7 @@ agent: # only for multi-agent training
     libero_chain:                # LIBERO (Placer / Operator / Stopper, parser-enforced slices; a frozen
                                  #   pi0.5 on eom-robotics' Stage 2 env server carries out the winner's
                                  #   instruction; reward = goal conditions met for the first time)
+      allow_single: False        # True: a society of ONE agent (the monolithic baseline: REINFORCE on its own instructions, no competing bids)
       revenue_share: True
       bid_pass: True
       bid_levels: [0.0, 0.2, 0.4, 0.6, 0.8]

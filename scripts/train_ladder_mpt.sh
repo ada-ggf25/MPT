@@ -21,6 +21,9 @@ if [ -z "${BASE_MODEL:-}" ]; then
 fi
 M_PICKER=${M_PICKER:-$BASE_MODEL}
 M_PLACER=${M_PLACER:-$BASE_MODEL}
+M_SINGLE=${M_SINGLE:-$BASE_MODEL}
+# SOCIETY=single: the monolithic baseline, one model REINFORCE-trained on its own instructions (a society of one: no bids, no counterfactual phase)
+SOCIETY=${SOCIETY:-society}
 DATA=${DATA:-$REPO/data/ladder}
 NGPUS=${NGPUS:-4}
 TBS=${TBS:-8}
@@ -36,6 +39,13 @@ RESUME_MODE=${RESUME_MODE:-auto}
 ALT_ACT=${ALT_ACT:-4}
 ALT_BID=${ALT_BID:-1}
 CF=${CF:-True}
+if [ "$SOCIETY" = single ]; then
+  ALT_ACT=0 ALT_BID=0 CF=False
+  AGENT_ARGS=('agent.agent_ids=["Single Desk (ladder)"]' "agent.model_ids=[\"$M_SINGLE\"]" agent.orchestra.libero_chain.allow_single=True
+              agent.orchestra.libero_chain.train_bid_rows=False)
+else
+  AGENT_ARGS=('agent.agent_ids=["Picker Desk (ladder)","Placer Desk (ladder)"]' "agent.model_ids=[\"$M_PICKER\",\"$M_PLACER\"]")
+fi
 
 : "${LIBERO_ENV_URL:?set LIBERO_ENV_URL to the env server (e.g. http://host:31700)}"
 case "$LIBERO_ENV_URL" in
@@ -111,8 +121,7 @@ run_or_echo "$PY" -m verl.trainer.main_ppo \
     env.max_steps="$MAXSTEPS" \
     env.rollout.n="$GROUP" \
     agent.multi_agent=True \
-    'agent.agent_ids=["Picker Desk (ladder)","Placer Desk (ladder)"]' \
-    "agent.model_ids=[\"$M_PICKER\",\"$M_PLACER\"]" \
+    "${AGENT_ARGS[@]}" \
     agent.model_sharing=False \
     agent.orchestra_type=libero_chain \
     +agent.mixed_modality=True \

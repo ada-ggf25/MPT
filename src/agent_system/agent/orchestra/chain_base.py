@@ -85,7 +85,7 @@ class ChainOrchestraBase(BaseOrchestra):
             self.external[ag.name] = ag
             self.desk_ids.append(ag.name)
         self.n = len(self.desk_ids)
-        if self.n < 2:
+        if self.n < 2 and not bool(_get("allow_single", False)):   # allow_single: the monolithic baseline, a society of one (its turns need no auction)
             raise ValueError(f"{type(self).__name__} needs >=2 competing agents; "
                              f"got agent_ids={agent_ids} and {len(self.external)} external agents.")
 

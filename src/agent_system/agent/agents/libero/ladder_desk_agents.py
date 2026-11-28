@@ -32,7 +32,7 @@ class _LadderDeskBase(_LiberoDeskBase):
             self._n_desks = len(config.agent.agent_ids)
         except Exception:
             self._n_desks = len(lp.AGENTS)
-        self.SPEC = lp.AGENTS[self.AGENT_NAME]
+        self.SPEC = {**lp.AGENTS, "Single Desk (ladder)": lp.SINGLE}[self.AGENT_NAME]
         self.KEY, self.DESK = self.SPEC["key"], self.SPEC["desk"]
         self.VERBS = (self.KEY,)
         self.MENU = (self.SPEC["verbs"],)
@@ -71,3 +71,9 @@ class PickerDeskAgent(_LadderDeskBase):
 @AgentRegistry.register("Placer Desk (ladder)")
 class LadderPlacerDeskAgent(_LadderDeskBase):
     AGENT_NAME = "Placer Desk (ladder)"
+
+
+@AgentRegistry.register("Single Desk (ladder)")
+class SingleDeskAgent(_LadderDeskBase):
+    """The monolithic baseline: one model that may write either kind of instruction (a society of one: allow_single, no competing bids)."""
+    AGENT_NAME = "Single Desk (ladder)"
